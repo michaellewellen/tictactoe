@@ -94,16 +94,21 @@
         busy = true;
         try{
             await InsertMove(index, "X");
-
             await LoadBoardAsync();
-
             CheckGameState();
+            if (gameOver) return;
 
-            int computerMove = GetComputerMove();
-            await InsertMove(computerMove,"O");
+
             message = "Computer is thinking ...";
             StateHasChanged();
             await Task.Delay(500);
+
+            int computerMove = GetComputerMove();
+            await InsertMove(computerMove,"O");
+            await LoadBoardAsync();
+            CheckGameState();
+
+            if (!gameOver) message = "Your move!";
         }
         finally
         {
