@@ -1,0 +1,112 @@
+@page "/TicTacToe/{id:int}"
+
+@inject IConfiguration Configuration
+@using Npgsql
+@using Dapper
+@rendermode InteractiveServer
+
+<p>@message</p>
+
+<div class="board">
+    @for (int i = 0; i < 9; i++)
+    {
+        int index = i;
+        <div class="cell" @onclick="() => CellClicked(index)">
+            @board[index]
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int id { get; set; }
+
+    private string?[] board = new string?[9];
+    private bool gameOver = false;
+    private string message = "";
+
+    private record Move(int Position, string Piece);
+
+    private static readonly int[][] WinningLines =
+    {
+        new[] {0,1,2}, new[] {3,4,5}, new[] {6,7,8},   // rows
+        new[] {0,3,6}, new[] {1,4,7}, new[] {2,5,8},   // columns
+        new[] {0,4,8}, new[] {2,4,6}                   // diagonals
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBoardAsync();
+
+        if (board.All(cell => cell == null))
+        {
+            message = "Game not started";
+        }
+        else
+        {
+            message = $"Game : {id}";
+        }
+    }
+
+    private async Task LoadBoardAsync()
+    {
+        Array.Clear(board);
+
+        await using var conn = new NpgsqlConnection(
+            Configuration.GetConnectionString("DefaultConnection"));
+
+        var moves = await conn.QueryAsync<Move>(
+            "SELECT position, piece FROM tictactoe WHERE game_id = @Id",
+            new { Id = id });
+
+        foreach (var m in moves)
+        {
+            board[m.Position] = m.Piece;
+        }
+    }
+
+    private string? CheckWinner(string?[] b)
+    {
+        foreach (var line in WinningLines)
+        {
+            if (b[line[0]] != null && b[line[0]] == b[line[1]] && b[line[1]] == b[line[2]])
+            {
+                return b[line[0]];
+            }
+        }
+        return null;
+    }
+
+    private async Task CellClicked(int index)
+    {
+        if (gameOver)
+        {
+            return;
+        }
+        if (board[index] != null)
+        {
+            return; // cell is already filled
+        }
+
+        await using var conn = new NpgsqlConnection(
+            Configuration.GetConnectionString("DefaultConnection"));
+
+        await conn.ExecuteAsync(
+            "INSERT INTO tictactoe (game_id, position, piece) VALUES (@GameId, @Position, @Piece)",
+            new { GameId = id, Position = index, Piece = "X" });
+
+        await LoadBoardAsync();
+
+        var winner = CheckWinner(board);
+        if (winner != null)
+        {
+            gameOver = true;
+            message = $"Winner: {winner}";
+        }
+        else if (board.All(cell => cell != null))
+        {
+            gameOver = true;
+            message = "It's a draw!";
+        }
+    }
+}
