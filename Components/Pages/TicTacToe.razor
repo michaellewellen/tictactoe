@@ -1,8 +1,10 @@
 @page "/TicTacToe/{id:int}"
 
 @inject IConfiguration Configuration
-@using Npgsql
+@using System.Runtime.InteropServices
 @using Dapper
+@using Microsoft.AspNetCore.Authentication.OAuth.Claims
+@using Npgsql
 @rendermode InteractiveServer
 
 <p>@message</p>
@@ -16,11 +18,15 @@
         </div>
     }
 </div>
+@if (gameOver)
+{
+    <button class="play-again" @onclick="NewGame">Play again?</button>
+}
 
 @code {
     [Parameter]
     public int id { get; set; }
-
+    private bool busy = false;
     private string?[] board = new string?[9];
     private bool gameOver = false;
     private string message = "";
@@ -46,6 +52,8 @@
         {
             message = $"Game : {id}";
         }
+        CheckGameState();
+
     }
 
     private async Task LoadBoardAsync()
@@ -79,25 +87,42 @@
 
     private async Task CellClicked(int index)
     {
-        if (gameOver)
-        {
-            return;
-        }
-        if (board[index] != null)
-        {
-            return; // cell is already filled
-        }
+        if (busy) return;
+        if (gameOver) return;        
+        if (board[index] != null) return;
 
+        busy = true;
+        try{
+            await InsertMove(index, "X");
+
+            await LoadBoardAsync();
+
+            CheckGameState();
+
+            int computerMove = GetComputerMove();
+            await InsertMove(computerMove,"O");
+            message = "Computer is thinking ...";
+            StateHasChanged();
+            await Task.Delay(500);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task InsertMove(int position, string piece)
+    {
         await using var conn = new NpgsqlConnection(
             Configuration.GetConnectionString("DefaultConnection"));
 
         await conn.ExecuteAsync(
             "INSERT INTO tictactoe (game_id, position, piece) VALUES (@GameId, @Position, @Piece)",
-            new { GameId = id, Position = index, Piece = "X" });
-
-        await LoadBoardAsync();
-
-        var winner = CheckWinner(board);
+            new { GameId = id, Position = position, Piece = piece });
+    }
+    private void CheckGameState()
+    {
+        string? winner = CheckWinner(board);
         if (winner != null)
         {
             gameOver = true;
@@ -108,5 +133,41 @@
             gameOver = true;
             message = "It's a draw!";
         }
+    }
+
+    private int GetComputerMove()
+    {
+        return FindLineMove("O")
+            ?? FindLineMove("X")
+            ?? (board[4] == null ? 4 : RandomOpenSquare());
+    }
+    private int? FindLineMove(string piece)
+    {
+        foreach (int[] line in WinningLines)
+        {
+            if((line.Count(pos => board[pos] == piece) == 2) && (line.Count(pos => board[pos] == null) == 1))
+                return line.First(pos => board[pos] == null);
+        }
+        return null;
+    }
+    private int RandomOpenSquare()
+    {
+        List<int> open = Enumerable.Range(0,9).Where(i => board[i] == null).ToList();
+        return open[Random.Shared.Next(open.Count)];
+    }
+
+    private async Task NewGame()
+    {
+        await using var conn = new NpgsqlConnection(
+            Configuration.GetConnectionString("DefaultConnection"));
+
+        await conn.ExecuteAsync(
+            "DELETE FROM tictactoe WHERE game_id = @Id",
+            new { Id = id });
+        
+        await LoadBoardAsync();
+
+        gameOver = false;
+        message = "It's your move";
     }
 }
