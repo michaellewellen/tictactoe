@@ -1,0 +1,11 @@
+@page "/TicTacToe/new"
+@inject ActiveGames ActiveGames
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        int gameId = ActiveGames.Claim();
+        Nav.NavigateTo($"/TicTacToe/{gameId}");
+    }
+}

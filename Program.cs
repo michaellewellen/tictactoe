@@ -1,10 +1,13 @@
 using tictoe.Components;
+using tictoe;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddSingleton<ActiveGames>();
 
 var app = builder.Build();
 

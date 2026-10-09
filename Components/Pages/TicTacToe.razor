@@ -1,6 +1,8 @@
 @page "/TicTacToe/{id:int}"
 
 @inject IConfiguration Configuration
+@inject ActiveGames ActiveGames
+@implements IDisposable
 @using System.Runtime.InteropServices
 @using Dapper
 @using Microsoft.AspNetCore.Authentication.OAuth.Claims
@@ -42,6 +44,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        ActiveGames.Open(id);
         await LoadBoardAsync();
 
         if (board.All(cell => cell == null))
@@ -56,6 +59,10 @@
 
     }
 
+    public void Dispose()
+    {
+        ActiveGames.Release(id);
+    }
     private async Task LoadBoardAsync()
     {
         Array.Clear(board);
